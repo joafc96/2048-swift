@@ -16,8 +16,6 @@ class ViewController: UIViewController {
         
         let tile12 = Tile(value: TileValue(score: 2), position: Coordinate(x: 1, y: 2))
         
-        print(tile01.value.evolve())
-        print(tile01)
 
 
     }
