@@ -8,18 +8,19 @@
 import Foundation
 
 class TwoZeroFourEightEngine<T: Evolvable> {
-        
-    private var board: Array<Array<T?>>
+    
+    var board: Array<Array<T?>>
     private let dimension: Int
     
     init(dimension: Int) {
         self.dimension = dimension
         self.board = Array<Array<T?>>(repeating: Array(repeating: nil, count: dimension), count: dimension)
+        
+        
     }
     
     // MARK: - Left Configurations
-    private func moveLeft() {
-        
+    func moveLeft() {
         var actions = [MoveAction<T>]()
         
         for row in 0..<self.dimension {
@@ -27,41 +28,38 @@ class TwoZeroFourEightEngine<T: Evolvable> {
             for col in 0..<self.dimension {
                 
                 if let currentEntry = self.board[row][col] {
+                    // Entry is not nil
+                    let currentCoordinate = Coordinate(x: row, y: col)
+                    
                     if let prevColIndex = prevEntrySeenColIndex {
                         // An entry was seen and was stored previously
+                        let prevValCoordinate = Coordinate(x: row, y: prevColIndex)
+                        
                         if currentEntry == self.board[row][prevColIndex] {
-                            let currentCoordinate = Coordinate(x: row, y: col)
-                            let prevCoordinate = Coordinate(x: row, y: prevColIndex)
-                            let leftmostCoordinate  = getLeftMostCooridnateFrom(prevCoordinate)
+                            // MERGE. Prev entry and current entry are same.
+                            let leftmostCoordinate  = self.getLeftMostCoordinateFrom(prevValCoordinate)
                             
-                            // Merge
-                            if let evolved = currentEntry.evolve() {
-                                // Create a MoveAction.Merge that have sources [row][temp] and [row][col] and ends up in [row][leftmost]
-                            }
-                
-                            // Update board
-                            self.board[row][leftmostCoordinate.y] = self.board[row][col]?.evolve()
-                            self.board[row][prevColIndex] = nil
-                            
-                            // If we are on the leftmost edge, we don't want to set this to
-                            // nil because we just set it to the evolved value
-                            if leftmostCoordinate.y != prevColIndex {
-                                self.board[row][prevColIndex] = nil
+                            self.mergeAndUpdateBoardHorizontally(toCoordinate: leftmostCoordinate,
+                                                                 prevCoordinate: prevValCoordinate,
+                                                                 currentCoordinate: currentCoordinate,
+                                                                 currentEntry: currentEntry) { (moveAction: MoveAction<T>?) in
+                                
+                                if let action = moveAction {
+                                    actions.append(action)
+                                }
                             }
                             
-                            // set the previously seen col index to nil as it is now merged and moved
+                            // set the previously seen col index to nil as it is now merged and moved.
                             prevEntrySeenColIndex = nil
                         } else {
-                            // No merge. Try to Move the piece from tempCol left instead
-                            let prevCoordinate = Coordinate(x: row, y: prevColIndex)
-                            if let moveAction = moveTileAsFarLeftAsPossibleFromCurrent(prevCoordinate) {
+                            // NO MERGE. Move the piece from prevCol to far left instead.
+                            if let moveAction = moveTileAsFarLeftAsPossibleFromCurrent(prevValCoordinate) {
                                 actions.append(moveAction)
                             }
                             
                             if col == self.dimension - 1 {
-                                // No more pieces to try to merge with. Just move the last piece left
-                                let curCoordinate = Coordinate(x: row, y: col)
-                                if let moveAction = moveTileAsFarLeftAsPossibleFromCurrent(curCoordinate) {
+                                // No more pieces to try to merge with. Just move the last piece left.
+                                if let moveAction = moveTileAsFarLeftAsPossibleFromCurrent(currentCoordinate) {
                                     actions.append(moveAction)
                                 }
                             } else {
@@ -73,8 +71,7 @@ class TwoZeroFourEightEngine<T: Evolvable> {
                         //
                         if col == self.dimension - 1 {
                             // Currently on the right edge. No need to store this to check for merging. Can just move it to th leftmost
-                            let curCoordinate = Coordinate(x: row, y: col)
-                            if let moveAction = moveTileAsFarLeftAsPossibleFromCurrent(curCoordinate) {
+                            if let moveAction = moveTileAsFarLeftAsPossibleFromCurrent(currentCoordinate) {
                                 actions.append(moveAction)
                             }
                             
@@ -99,38 +96,307 @@ class TwoZeroFourEightEngine<T: Evolvable> {
             // Reassign it as nil to start a fresh row
             prevEntrySeenColIndex = nil
         }
-        
     }
     
-    func moveTileAsFarLeftAsPossibleFromCurrent(_ coordinate: Coordinate)  -> MoveAction<T>? {
+    private func moveTileAsFarLeftAsPossibleFromCurrent(_ coordinate: Coordinate)  -> MoveAction<T>?
+    {
         var action: MoveAction<T>? = nil
+        let leftmostCoordinate  = self.getLeftMostCoordinateFrom(coordinate)
         
-        // current coordinate values
-        let currentRow = coordinate.x
-        let currentCol = coordinate.y
-        
-        // leftmost coordinate & column
-        let leftmostCoordinate  = getLeftMostCooridnateFrom(coordinate)
-        let leftmostCol = leftmostCoordinate.y
-     
-        if leftmostCol != currentCol {
+        if leftmostCoordinate.y != coordinate.y {
             action = MoveAction.Move(from: coordinate, to: leftmostCoordinate)
             
             // update board
-            self.board[currentRow][leftmostCol] = self.board[currentRow][currentCol]
-            self.board[currentRow][currentCol] = nil
+            self.board[coordinate.x][leftmostCoordinate.y] = self.board[coordinate.x][coordinate.y]
+            self.board[coordinate.x][coordinate.y] = nil
         }
         return action
     }
     
-    func getLeftMostCooridnateFrom(_ coordinate: Coordinate) -> Coordinate {
+    func getLeftMostCoordinateFrom(_ coordinate: Coordinate) -> Coordinate
+    {
         var leftmostCol = coordinate.y
         let currentRow = coordinate.x
-        while (leftmostCol > 0 && self.board[currentRow][leftmostCol] == nil) {
+        while (leftmostCol > 0 && self.board[currentRow][leftmostCol - 1] == nil) {
             leftmostCol -= 1
         }
         
         return Coordinate(x: currentRow, y: leftmostCol)
     }
     
+    
+    // MARK: - Right Configurations
+    func moveRight() {
+        var actions = [MoveAction<T>]()
+        
+        for row in 0..<self.dimension {
+            var prevEntrySeenColIndex: Int?
+            for col in stride(from: self.dimension - 1, through: 0, by: -1) {
+                
+                if let currentEntry = self.board[row][col] {
+                    let currentCoordinate = Coordinate(x: row, y: col)
+                    
+                    if let prevColIndex = prevEntrySeenColIndex {
+                        let prevValCoordinate = Coordinate(x: row, y: prevColIndex)
+                        
+                        if currentEntry == self.board[row][prevColIndex] {
+                            //Merge
+                            let rightmostCoordinate = self.getRightMostCoordinateFrom(prevValCoordinate)
+                            
+                            self.mergeAndUpdateBoardHorizontally(toCoordinate: rightmostCoordinate,
+                                                                 prevCoordinate: prevValCoordinate,
+                                                                 currentCoordinate: currentCoordinate,
+                                                                 currentEntry: currentEntry) { (moveAction: MoveAction<T>?) in
+                                
+                                if let action = moveAction {
+                                    actions.append(action)
+                                }
+                            }
+                            
+                            // set the previously seen col index to nil as it is now merged and moved
+                            prevEntrySeenColIndex = nil
+                        } else {
+                            // No Merge
+                            if let action = self.moveTileAsFarRightAsPossibleFromCurrent(prevValCoordinate) {
+                                actions.append(action)
+                            }
+                            
+                            if col == 0 {
+                                // No more pieces to try to merge with. Just move the last piece right.
+                                if let action  = self.moveTileAsFarRightAsPossibleFromCurrent(currentCoordinate) {
+                                    actions.append(action)
+                                }
+                            } else {
+                                // Whatever was tempCol previously did not result in a merge. Trying again with the current col.
+                                prevEntrySeenColIndex = col
+                            }
+                        }
+                    } else {
+                        if col == 0 {
+                            // Hit the left edge
+                            if let action = self.moveTileAsFarRightAsPossibleFromCurrent(currentCoordinate) {
+                                actions.append(action)
+                            }
+                        } else {
+                            prevEntrySeenColIndex = col
+                        }
+                    }
+                    
+                } else {
+                    if let prevEntryCol = prevEntrySeenColIndex {
+                        if col == 0 {
+                            // Hit the left edge
+                            let prevCoordinate = Coordinate(x: row, y: prevEntryCol)
+                            if let action = self.moveTileAsFarRightAsPossibleFromCurrent(prevCoordinate) {
+                                actions.append(action)
+                            }
+                        }
+                    }
+                }
+            }
+            prevEntrySeenColIndex = nil
+        }
+    }
+    
+    
+    private func moveTileAsFarRightAsPossibleFromCurrent(_ coordinate: Coordinate)  -> MoveAction<T>?
+    {
+        var action: MoveAction<T>? = nil
+        let rightmostCoordinate  = self.getRightMostCoordinateFrom(coordinate)
+        
+        if rightmostCoordinate.y != coordinate.y {
+            action = MoveAction.Move(from: coordinate, to: rightmostCoordinate)
+            
+            // update board
+            self.board[coordinate.x][rightmostCoordinate.y] = self.board[coordinate.x][coordinate.y]
+            self.board[coordinate.x][coordinate.y] = nil
+        }
+        return action
+    }
+    
+    func getRightMostCoordinateFrom(_ coordinate: Coordinate) -> Coordinate
+    {
+        var rightMostCol = coordinate.y
+        let currentRow = coordinate.x
+        while (rightMostCol < self.dimension - 1 && self.board[currentRow][rightMostCol + 1] == nil) {
+            rightMostCol += 1
+        }
+        
+        return Coordinate(x: currentRow, y: rightMostCol)
+    }
+    
+    // MARK: - UP Configurations
+    
+    func moveUp() {
+        var actions = [MoveAction<T>]()
+        
+        for col in 0..<self.dimension {
+            var prevSeenRowIndex: Int?
+            for row in 0..<self.dimension {
+                
+                if let currentEntry = self.board[row][col] {
+                    let currentCoordinate = Coordinate(x: row, y: col)
+                    
+                    if let prevRowIndex = prevSeenRowIndex {
+                        let prevValCoordinate = Coordinate(x: prevRowIndex, y: col)
+                        
+                        if currentEntry == self.board[prevRowIndex][col] {
+                            // Merge
+                            let topmostCoordinate = self.getTopMostCoordinateFrom(prevValCoordinate)
+                            
+                            self.mergeAndUpdateBoardVertically(toCoordinate: topmostCoordinate,
+                                                                 prevCoordinate: prevValCoordinate,
+                                                                 currentCoordinate: currentCoordinate,
+                                                                 currentEntry: currentEntry) { (moveAction: MoveAction<T>?) in
+                                
+                                if let action = moveAction {
+                                    actions.append(action)
+                                }
+                            }
+                            
+                            // set the previously seen row index to nil as it is now merged and moved
+                            prevSeenRowIndex = nil
+                        } else {
+                            // No Merge
+                            if let action = self.moveTileAsFarTopAsPossibleFromCurrent(prevValCoordinate) {
+                                actions.append(action)
+                            }
+                            
+                            if row == self.dimension - 1 {
+                                // Hit the bottom edge
+                                if let action = self.moveTileAsFarTopAsPossibleFromCurrent(currentCoordinate){
+                                    actions.append(action)
+                                }
+                                
+                            } else {
+                                prevSeenRowIndex = row
+                            }
+                        }
+                    } else {
+                        if row == self.dimension - 1 {
+                            // Currently on the bottom edge. No need to store this to check for merging. Can just move it.
+                            if let action = self.moveTileAsFarTopAsPossibleFromCurrent(currentCoordinate){
+                                actions.append(action)
+                            }
+                        } else {
+                            prevSeenRowIndex = row
+                        }
+                    }
+                } else {
+                    if let prevRowIndex = prevSeenRowIndex {
+                        if row == self.dimension - 1 {
+                            // Hit the bottom edge
+                            
+                            let prevValCoordinate = Coordinate(x: prevRowIndex, y: col)
+                            if let action = self.moveTileAsFarTopAsPossibleFromCurrent(prevValCoordinate) {
+                                actions.append(action)
+                            }
+                        }
+                    }
+                }
+                
+            }
+        }
+    }
+    
+    private func moveTileAsFarTopAsPossibleFromCurrent(_ coordinate: Coordinate)  -> MoveAction<T>?
+    {
+        var action: MoveAction<T>? = nil
+        let topmostCoordinate  = self.getTopMostCoordinateFrom(coordinate)
+        
+        if topmostCoordinate.x != coordinate.x {
+            action = MoveAction.Move(from: coordinate, to: topmostCoordinate)
+            
+            // update board
+            self.board[topmostCoordinate.x][coordinate.y] = self.board[coordinate.x][coordinate.y]
+            self.board[coordinate.x][coordinate.y] = nil
+        }
+        return action
+    }
+    
+    func getTopMostCoordinateFrom(_ coordinate: Coordinate) -> Coordinate
+    {
+        var topMostRow = coordinate.x
+        let currentCol = coordinate.y
+        while (topMostRow > 0 && self.board[topMostRow - 1][currentCol] == nil) {
+            topMostRow -= 1
+        }
+        
+        return Coordinate(x: topMostRow, y: currentCol)
+    }
+    
+    
+    // -------------------------------
+    // MARK: Private Helper Methods
+    // -------------------------------
+    
+    private func mergeAndUpdateBoardHorizontally(toCoordinate: Coordinate,
+                                                 prevCoordinate: Coordinate,
+                                                 currentCoordinate: Coordinate,
+                                                 currentEntry: T,
+                                                 completion: (MoveAction<T>?) -> Void)
+    {
+        if let evolved = currentEntry.evolve() {
+            // Create a MoveAction.Merge that have sources [row][prevCol] and [row][col] and ends up in [row][leftmost]/[row][rightMost]
+            let newTile = Tile<T>(value: evolved, position: toCoordinate)
+            let action = MoveAction.Merge(from: prevCoordinate,
+                                          andFrom: currentCoordinate,
+                                          toTile: newTile)
+            completion(action)
+        }
+        
+        // Update board
+        // set the leftmost/rightmost tile to the evolved value and then current tile to nil.
+        self.board[currentCoordinate.x][toCoordinate.y] = self.board[currentCoordinate.x][currentCoordinate.y]?.evolve()
+        self.board[currentCoordinate.x][currentCoordinate.y] = nil
+        
+        // If we are on the leftMost/rightMost tile, we don't want to set this to nil, because we just set it to the evolved value 😋.
+        if toCoordinate.y != prevCoordinate.y {
+            self.board[currentCoordinate.x][prevCoordinate.y] = nil
+        }
+        
+    }
+    
+    
+    private func mergeAndUpdateBoardVertically(toCoordinate: Coordinate,
+                                               prevCoordinate: Coordinate,
+                                               currentCoordinate: Coordinate,
+                                               currentEntry: T,
+                                               completion: (MoveAction<T>?) -> Void)
+    {
+        if let evolved = currentEntry.evolve() {
+            // Create a MoveAction.Merge that have sources [row][prevCol] and [row][col] and ends up in [topmostRow][col]/[downmostRow][col]
+            let newTile = Tile<T>(value: evolved, position: toCoordinate)
+            let action = MoveAction.Merge(from: prevCoordinate,
+                                          andFrom: currentCoordinate,
+                                          toTile: newTile)
+            completion(action)
+        }
+        
+        // Update board
+        // set the topmost/downmost tile to the evolved value and then current tile to nil.
+        self.board[toCoordinate.x][currentCoordinate.y] = self.board[currentCoordinate.x][currentCoordinate.y]?.evolve()
+        self.board[currentCoordinate.x][currentCoordinate.y] = nil
+        
+        // If we are on the topmost/downmost tile, we don't want to set this to nil, because we just set it to the evolved value 😋.
+        if toCoordinate.x != prevCoordinate.x {
+            self.board[prevCoordinate.x][currentCoordinate.y] = nil
+        }
+        
+    }
+    
+    func printBoard() {
+        for row in 0..<self.dimension {
+            var rowString = ""
+            for col in 0..<self.dimension {
+                if let entry = self.board[row][col] {
+                    rowString += "\(entry.score) "
+                } else {
+                    rowString += "- "
+                }
+            }
+            print(rowString)
+            
+        }
+    }
 }
